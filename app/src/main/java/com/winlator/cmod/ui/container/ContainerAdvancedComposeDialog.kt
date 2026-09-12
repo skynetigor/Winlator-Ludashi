@@ -42,6 +42,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -61,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -273,23 +275,41 @@ private fun AdvancedContainerScreen(containerId: Int, onCancel: () -> Unit, onSa
 @Composable
 private fun AdvancedEnvironmentPage(rows: MutableList<AdvancedEnvEntry>) {
     var addOpen by remember { mutableStateOf(false) }
+    var bulkMode by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(10.dp)) {
-        itemsIndexed(rows, key = { index, item -> "${item.name}-$index" }) { index, item ->
-            AdvancedEnvRow(
-                item = item,
-                onValue = { value -> rows[index] = item.copy(value = value) },
-                onRemove = { if (index in rows.indices) rows.removeAt(index) }
-            )
-            if (index != rows.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
-        }
         item {
-            OutlinedButton(
-                onClick = { addOpen = true },
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.size(7.dp))
-                Text("Add variable")
+                Text(
+                    "Edit as text",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Switch(checked = bulkMode, onCheckedChange = { bulkMode = it })
+            }
+        }
+        if (bulkMode) {
+            item { AdvancedEnvBulkEditor(rows) }
+        } else {
+            itemsIndexed(rows, key = { index, item -> "${item.name}-$index" }) { index, item ->
+                AdvancedEnvRow(
+                    item = item,
+                    onValue = { value -> rows[index] = item.copy(value = value) },
+                    onRemove = { if (index in rows.indices) rows.removeAt(index) }
+                )
+                if (index != rows.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+            }
+            item {
+                OutlinedButton(
+                    onClick = { addOpen = true },
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+                ) {
+                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(7.dp))
+                    Text("Add variable")
+                }
             }
         }
     }
@@ -314,6 +334,49 @@ private fun AdvancedEnvironmentPage(rows: MutableList<AdvancedEnvEntry>) {
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun AdvancedEnvBulkEditor(rows: MutableList<AdvancedEnvEntry>) {
+    val current = rows.joinToString(" ") { "${it.name}=${it.value}" }
+    var draft by remember(current) { mutableStateOf(current) }
+    val parsed = remember(draft) { parseAdvancedEnv(draft) }
+    val dirty = draft != current
+
+    Column(Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            label = { Text("NAME=VALUE, separated by spaces or new lines") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 7,
+            textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace)
+        )
+        Text(
+            if (parsed.size == 1) "1 variable" else "${parsed.size} variables",
+            modifier = Modifier.padding(top = 6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = { draft = current },
+                enabled = dirty,
+                modifier = Modifier.weight(1f)
+            ) { Text("Revert") }
+            OutlinedButton(
+                onClick = {
+                    rows.clear()
+                    rows.addAll(parsed)
+                },
+                enabled = dirty,
+                modifier = Modifier.weight(1f)
+            ) { Text("Apply") }
+        }
     }
 }
 
@@ -524,9 +587,11 @@ private fun AdvancedMultiChoice(selected: String, entries: List<String>, onSelec
     }
 }
 
+private val ADVANCED_ENV_SEPARATOR = Regex("\\s+")
+
 private fun parseAdvancedEnv(raw: String): List<AdvancedEnvEntry> {
     if (raw.isBlank()) return emptyList()
-    return raw.split(' ').mapNotNull { token ->
+    return raw.split(ADVANCED_ENV_SEPARATOR).mapNotNull { token ->
         val split = token.indexOf('=')
         if (split <= 0) null else AdvancedEnvEntry(token.substring(0, split), token.substring(split + 1))
     }
