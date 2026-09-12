@@ -19,8 +19,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -70,13 +73,23 @@ val knownEnvironmentVariables = listOf(
     EnvVariableSpec("WINEDLLOVERRIDES", EnvValueKind.TEXT)
 )
 
+private val ENV_SEPARATOR = Regex("\\s+")
+
+/** Variables that per-shortcut controls own and may override at launch. */
+private val SHORTCUT_MANAGED_KEYS = setOf("DXVK_HUD", "TU_DEBUG")
+
 fun parseEnvironmentVariables(raw: String): List<EditableEnvVariable> {
     if (raw.isBlank()) return emptyList()
-    return raw.split(' ').mapNotNull { token ->
+    return raw.split(ENV_SEPARATOR).mapNotNull { token ->
         val split = token.indexOf('=')
         if (split <= 0) null else EditableEnvVariable(token.substring(0, split), token.substring(split + 1))
     }
 }
+
+/** Tokens that carry no "=" and would therefore be dropped on save. */
+fun invalidEnvironmentTokens(raw: String): List<String> = raw
+    .split(ENV_SEPARATOR)
+    .filter { it.isNotBlank() && it.indexOf('=') <= 0 }
 
 fun serializeEnvironmentVariables(rows: List<EditableEnvVariable>): String = rows
     .filter { it.name.isNotBlank() }
@@ -92,11 +105,18 @@ fun EnvironmentVariablesEditor(
         mutableStateListOf<EditableEnvVariable>().apply { addAll(parseEnvironmentVariables(value)) }
     }
     var addOpen by remember { mutableStateOf(false) }
+    var bulkMode by remember { mutableStateOf(false) }
 
     fun commit() = onChanged(serializeEnvironmentVariables(rows))
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (rows.isEmpty()) {
+        SettingsCard {
+            SettingToggle("Edit as text", bulkMode) { bulkMode = it }
+        }
+
+        if (bulkMode) {
+            BulkEnvironmentEditor(value = value, onApply = onChanged)
+        } else if (rows.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -131,10 +151,13 @@ fun EnvironmentVariablesEditor(
                 }
             }
         }
-        OutlinedButton(onClick = { addOpen = true }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.size(7.dp))
-            Text("Add variable")
+
+        if (!bulkMode) {
+            OutlinedButton(onClick = { addOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(7.dp))
+                Text("Add variable")
+            }
         }
     }
 
@@ -148,6 +171,66 @@ fun EnvironmentVariablesEditor(
                 addOpen = false
             }
         )
+    }
+}
+
+@Composable
+private fun BulkEnvironmentEditor(value: String, onApply: (String) -> Unit) {
+    var draft by remember(value) { mutableStateOf(value) }
+    val parsed = remember(draft) { parseEnvironmentVariables(draft) }
+    val invalid = remember(draft) { invalidEnvironmentTokens(draft) }
+    val managed = remember(parsed) { parsed.map { it.name }.filter { it in SHORTCUT_MANAGED_KEYS } }
+    val dirty = draft != value
+
+    SettingsCard {
+        Column(Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                label = { Text("NAME=VALUE, separated by spaces or new lines") },
+                modifier = Modifier.fillMaxWidth().padding(12.dp).heightIn(min = 180.dp),
+                minLines = 7,
+                textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
+                shape = RoundedCornerShape(10.dp)
+            )
+            Text(
+                if (parsed.size == 1) "1 variable" else "${parsed.size} variables",
+                modifier = Modifier.padding(horizontal = 14.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (invalid.isNotEmpty()) {
+                Text(
+                    "Missing \"=\", will be dropped: " + invalid.joinToString(" "),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            if (managed.isNotEmpty()) {
+                Text(
+                    managed.joinToString(" and ") + " can be overridden by per-shortcut settings.",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { draft = value },
+                    enabled = dirty,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Revert") }
+                OutlinedButton(
+                    onClick = { onApply(serializeEnvironmentVariables(parsed)) },
+                    enabled = dirty,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Apply") }
+            }
+        }
     }
 }
 
@@ -250,21 +333,22 @@ private fun AddEnvironmentVariableDialog(
     val options = available + "Custom…"
     val selected = if (name in available) name else "Custom…"
 
+    val finalName = if (selected == "Custom…") customName.trim().replace(" ", "") else name
+    val spec = knownEnvironmentVariables.firstOrNull { it.name == finalName }
+    val presetValue = when (spec?.kind) {
+        EnvValueKind.CHECKBOX, EnvValueKind.SELECT -> spec?.options?.firstOrNull().orEmpty()
+        else -> ""
+    }
+    var value by remember(selected) { mutableStateOf(presetValue) }
+    val duplicate = finalName.isNotBlank() && finalName in existing
+
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = {
-                val finalName = if (selected == "Custom…") customName.trim().replace(" ", "") else name
-                if (finalName.isNotBlank() && finalName !in existing) {
-                    val spec = knownEnvironmentVariables.firstOrNull { it.name == finalName }
-                    val initial = when (spec?.kind) {
-                        EnvValueKind.CHECKBOX -> spec.options.firstOrNull().orEmpty()
-                        EnvValueKind.SELECT -> spec.options.firstOrNull().orEmpty()
-                        else -> ""
-                    }
-                    onAdd(finalName, initial)
-                }
-            }) { Text("Add") }
+            TextButton(
+                enabled = finalName.isNotBlank() && !duplicate,
+                onClick = { onAdd(finalName, value.trim().replace(" ", "")) }
+            ) { Text("Add") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         title = { Text("Add environment variable") },
@@ -275,6 +359,21 @@ private fun AddEnvironmentVariableDialog(
                 }
                 if (selected == "Custom…") {
                     SettingText("Name", customName) { customName = it }
+                }
+                val choices = spec?.options.orEmpty()
+                if (choices.isNotEmpty() &&
+                    (spec?.kind == EnvValueKind.CHECKBOX || spec?.kind == EnvValueKind.SELECT)
+                ) {
+                    SettingChoice("Value", value.ifBlank { choices.first() }, choices) { value = it }
+                } else {
+                    SettingText("Value", value) { value = it }
+                }
+                if (duplicate) {
+                    Text(
+                        "$finalName is already set.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }
