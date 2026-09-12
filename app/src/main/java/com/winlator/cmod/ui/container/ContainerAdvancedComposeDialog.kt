@@ -339,16 +339,18 @@ private fun AdvancedEnvironmentPage(rows: MutableList<AdvancedEnvEntry>) {
 
 @Composable
 private fun AdvancedEnvBulkEditor(rows: MutableList<AdvancedEnvEntry>) {
-    val current = rows.joinToString(" ") { "${it.name}=${it.value}" }
-    var draft by remember(current) { mutableStateOf(current) }
+    // Shown one per line for readability; rows stay the source of truth.
+    val pretty = rows.joinToString("\n") { "${it.name}=${it.value}" }
+    var draft by remember(pretty) { mutableStateOf(pretty) }
     val parsed = remember(draft) { parseAdvancedEnv(draft) }
-    val dirty = draft != current
+    val edited = draft != pretty
+    val changed = parsed != rows.toList()
 
     Column(Modifier.fillMaxWidth()) {
         OutlinedTextField(
             value = draft,
             onValueChange = { draft = it },
-            label = { Text("NAME=VALUE, separated by spaces or new lines") },
+            label = { Text("NAME=VALUE, one per line") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 7,
             textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace)
@@ -364,8 +366,8 @@ private fun AdvancedEnvBulkEditor(rows: MutableList<AdvancedEnvEntry>) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedButton(
-                onClick = { draft = current },
-                enabled = dirty,
+                onClick = { draft = pretty },
+                enabled = edited,
                 modifier = Modifier.weight(1f)
             ) { Text("Revert") }
             OutlinedButton(
@@ -373,7 +375,7 @@ private fun AdvancedEnvBulkEditor(rows: MutableList<AdvancedEnvEntry>) {
                     rows.clear()
                     rows.addAll(parsed)
                 },
-                enabled = dirty,
+                enabled = changed,
                 modifier = Modifier.weight(1f)
             ) { Text("Apply") }
         }
