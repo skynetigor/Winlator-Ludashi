@@ -176,18 +176,23 @@ fun EnvironmentVariablesEditor(
 
 @Composable
 private fun BulkEnvironmentEditor(value: String, onApply: (String) -> Unit) {
-    var draft by remember(value) { mutableStateOf(value) }
+    // Shown one per line for readability; the stored form stays space-separated.
+    val pretty = remember(value) { parseEnvironmentVariables(value).joinToString("\n") { "${it.name}=${it.value}" } }
+    var draft by remember(value) { mutableStateOf(pretty) }
     val parsed = remember(draft) { parseEnvironmentVariables(draft) }
     val invalid = remember(draft) { invalidEnvironmentTokens(draft) }
     val managed = remember(parsed) { parsed.map { it.name }.filter { it in SHORTCUT_MANAGED_KEYS } }
-    val dirty = draft != value
+    val normalized = remember(parsed) { serializeEnvironmentVariables(parsed) }
+    // Reformatting alone is revertable but not worth applying.
+    val edited = draft != pretty
+    val changed = normalized != value
 
     SettingsCard {
         Column(Modifier.fillMaxWidth()) {
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
-                label = { Text("NAME=VALUE, separated by spaces or new lines") },
+                label = { Text("NAME=VALUE, one per line") },
                 modifier = Modifier.fillMaxWidth().padding(12.dp).heightIn(min = 180.dp),
                 minLines = 7,
                 textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
@@ -220,13 +225,13 @@ private fun BulkEnvironmentEditor(value: String, onApply: (String) -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(
-                    onClick = { draft = value },
-                    enabled = dirty,
+                    onClick = { draft = pretty },
+                    enabled = edited,
                     modifier = Modifier.weight(1f)
                 ) { Text("Revert") }
                 OutlinedButton(
-                    onClick = { onApply(serializeEnvironmentVariables(parsed)) },
-                    enabled = dirty,
+                    onClick = { onApply(normalized) },
+                    enabled = changed,
                     modifier = Modifier.weight(1f)
                 ) { Text("Apply") }
             }
