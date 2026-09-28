@@ -121,6 +121,7 @@ import com.winlator.cmod.xserver.Window;
 import com.winlator.cmod.xserver.WindowManager;
 import com.winlator.cmod.xserver.XServer;
 import com.winlator.cmod.xserver.extensions.RandrExtension;
+import com.winlator.cmod.lsfg.LsfgManager;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -904,6 +905,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         if (midiHandler != null)
             midiHandler.stop();
 
+        LsfgManager.stopVsyncClock();
         if (environment != null)
             environment.stopEnvironmentComponents();
         if (winHandler != null)
@@ -953,6 +955,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             winlatorLogcatLogger = null;
         }
         if (taskManagerSidebar != null) taskManagerSidebar.stop();
+        LsfgManager.stopVsyncClock();
         super.onDestroy();
     }
 
@@ -1188,6 +1191,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         environment.startEnvironmentComponents();
+        LsfgManager.startVsyncClock(this, container);
 
         winHandler.start();
 

@@ -27,6 +27,7 @@ import com.winlator.cmod.core.WineInfo;
 import com.winlator.cmod.fexcore.FEXCoreManager;
 import com.winlator.cmod.fexcore.FEXCorePreset;
 import com.winlator.cmod.fexcore.FEXCorePresetManager;
+import com.winlator.cmod.lsfg.LsfgManager;
 import com.winlator.cmod.xconnector.UnixSocketConfig;
 import com.winlator.cmod.xenvironment.EnvironmentComponent;
 import com.winlator.cmod.xenvironment.ImageFs;
@@ -493,6 +494,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 execEnvVars.remove("VK_INSTANCE_LAYERS");
             }
         }
+
+        LsfgManager.prepareLaunch(context, imageFs, container, execEnvVars);
 
         String emulator = container.getEmulator();
         if (shortcut != null)

@@ -218,6 +218,7 @@ internal fun ContainerRuntimePane(
                 SettingsDivider(); SettingText("GPU Name", gpuName) { gpuName = it; saveGraphics("gpuName", it) }
                 SettingsDivider(); SettingText("Blacklisted Extensions", blacklistedExtensions, 2) { blacklistedExtensions = it; saveGraphics("blacklistedExtensions", it.replace(" ", "")) }
             }
+            ContainerLsfgCard(container)
         }
 
         ContainerOverviewComposeHost.SECTION_COMPATIBILITY -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
