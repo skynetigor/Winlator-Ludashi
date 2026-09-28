@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Winlator's window glyph with speed streaks trailing it for generated frames.
+     Kept inside the 66dp safe circle of the 108dp adaptive-icon canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="1.1"
+        android:scaleY="1.1">
+        <path
+            android:pathData="M28,46H38"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeAlpha="0.75"
+            android:strokeWidth="3.5"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M24,54H38"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeAlpha="0.55"
+            android:strokeWidth="3.5"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M30,62H38"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeAlpha="0.4"
+            android:strokeWidth="3.5"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M52,37H70A8,8 0 0 1 78,45V63A8,8 0 0 1 70,71H52A8,8 0 0 1 44,63V45A8,8 0 0 1 52,37Z"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="3" />
+        <path
+            android:pathData="M51.5,42H57A2.5,2.5 0 0 1 59.5,44.5V50A2.5,2.5 0 0 1 57,52.5H51.5A2.5,2.5 0 0 1 49,50V44.5A2.5,2.5 0 0 1 51.5,42Z M65,42H70.5A2.5,2.5 0 0 1 73,44.5V50A2.5,2.5 0 0 1 70.5,52.5H65A2.5,2.5 0 0 1 62.5,50V44.5A2.5,2.5 0 0 1 65,42Z M51.5,55.5H57A2.5,2.5 0 0 1 59.5,58V63.5A2.5,2.5 0 0 1 57,66H51.5A2.5,2.5 0 0 1 49,63.5V58A2.5,2.5 0 0 1 51.5,55.5Z M65,55.5H70.5A2.5,2.5 0 0 1 73,58V63.5A2.5,2.5 0 0 1 70.5,66H65A2.5,2.5 0 0 1 62.5,63.5V58A2.5,2.5 0 0 1 65,55.5Z"
+            android:fillColor="#FFFFFFFF" />
+    </group>
+</vector>
