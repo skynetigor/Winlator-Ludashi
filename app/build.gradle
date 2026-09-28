@@ -99,7 +99,9 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.winlator.cmod"
+        // Side-by-side install: keeps the upstream Ludashi build and its containers intact.
+        // namespace stays com.winlator.cmod so relative manifest class names still resolve.
+        applicationId "com.winlator.cmod.dev"
         minSdkVersion 28
         // We’re preserving Winlator’s request to keep targetSdkVersion at 28
         targetSdkVersion 28
