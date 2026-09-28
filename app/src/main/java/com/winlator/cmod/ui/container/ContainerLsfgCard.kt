@@ -132,6 +132,26 @@ internal fun ContainerLsfgCard(container: Container) {
     }
 }
 
+/** Shown while creating a container: there is no container folder yet to hold Lossless.dll. */
+@Composable
+internal fun ContainerLsfgUnavailableCard() {
+    SettingsCard {
+        Text(
+            "Frame Generation (LSFG)",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+        )
+        SettingsDivider()
+        Text(
+            "Create the container first, then edit it to import Lossless.dll and enable frame generation.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+        )
+    }
+}
+
 private fun dllSizeOf(container: Container): String? {
     if (!LsfgManager.hasDll(container)) return null
     return String.format(Locale.US, "%.1f MB", LsfgManager.getDllFile(container).length() / 1048576.0)

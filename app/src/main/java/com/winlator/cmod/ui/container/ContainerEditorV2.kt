@@ -948,6 +948,8 @@ private fun ContainerCategoryV2(
                     s.bcnCache = it; s.graphics("bcnEmulationCache", if (it) "1" else "0")
                 }
             }
+            // Shares the editor's Container instance, so saveExisting() persists these extras too.
+            s.editing?.let { ContainerLsfgCard(it) } ?: ContainerLsfgUnavailableCard()
         }
 
         "Compatibility" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
