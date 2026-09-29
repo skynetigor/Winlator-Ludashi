@@ -110,6 +110,11 @@ public class ContainerManager {
         }
     }
 
+    /** Synchronous create for callers already on a background thread (e.g. profile import). */
+    public Container createContainerFromData(JSONObject data, ContentsManager contentsManager) {
+        return createContainer(data, contentsManager);
+    }
+
     public void createContainerAsync(final JSONObject data, ContentsManager contentsManager, Callback<Container> callback) {
         final Handler handler = new Handler();
         Executors.newSingleThreadExecutor().execute(() -> {

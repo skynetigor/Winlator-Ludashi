@@ -1,0 +1,123 @@
+package com.winlator.cmod.container;
+
+import com.winlator.cmod.core.FileUtils;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
+/**
+ * Serializes a container's settings to a portable {@code .wcfg} profile and back.
+ *
+ * The profile is the container's own persisted JSON ({@link Container#saveData()} /
+ * {@link Container#loadData(JSONObject)}) wrapped in a versioned envelope, minus device-specific
+ * fields. It carries settings only — never the Wine prefix, games, or the proprietary Lossless.dll.
+ * On import, {@link ContainerImporter} resolves and installs any missing runtime components.
+ */
+public final class ContainerProfile {
+    public static final String FORMAT = "winlator-skynet-container";
+    public static final int VERSION = 1;
+    public static final String EXTENSION = "wcfg";
+
+    /** Device-specific fields dropped on export; importers fall back to local defaults. */
+    private static final String[] EXCLUDED_FIELDS = {"id", "drives", "rendererDriverId"};
+
+    private ContainerProfile() {}
+
+    public static final class Envelope {
+        public final JSONObject container;
+        public final JSONArray components;
+
+        Envelope(JSONObject container, JSONArray components) {
+            this.container = container;
+            this.components = components;
+        }
+    }
+
+    /** Builds the {@code .wcfg} JSON text for a container. */
+    public static String export(Container container, String appVersion) throws JSONException {
+        String raw = FileUtils.readString(container.getConfigFile());
+        if (raw == null || raw.isEmpty()) throw new JSONException("Container config is empty");
+        JSONObject data = new JSONObject(raw);
+        for (String field : EXCLUDED_FIELDS) data.remove(field);
+
+        JSONObject envelope = new JSONObject();
+        envelope.put("format", FORMAT);
+        envelope.put("version", VERSION);
+        envelope.put("exportedBy", "Winlator skyNET " + (appVersion == null ? "" : appVersion));
+        envelope.put("exportedAt", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(new Date()));
+        envelope.put("components", buildComponents(data));
+        envelope.put("container", data);
+        return envelope.toString(2);
+    }
+
+    /** Parses and validates a {@code .wcfg} profile. Throws {@link JSONException} if malformed. */
+    public static Envelope parse(String json) throws JSONException {
+        if (json == null || json.trim().isEmpty()) throw new JSONException("Empty profile");
+        JSONObject envelope = new JSONObject(json);
+        if (!FORMAT.equals(envelope.optString("format")))
+            throw new JSONException("Not a Winlator container profile");
+        int version = envelope.optInt("version", -1);
+        if (version < 1 || version > VERSION)
+            throw new JSONException("Unsupported profile version: " + version);
+        if (!envelope.has("container"))
+            throw new JSONException("Profile has no container settings");
+
+        JSONObject container = envelope.getJSONObject("container");
+        for (String field : EXCLUDED_FIELDS) container.remove(field); // defensive
+        JSONArray components = envelope.optJSONArray("components");
+        if (components == null) components = new JSONArray();
+        return new Envelope(container, components);
+    }
+
+    /** Suggested export file name, e.g. {@code My Game.wcfg}. */
+    public static String suggestedFileName(Container container) {
+        String name = container.getName();
+        if (name == null || name.trim().isEmpty()) name = "container";
+        name = name.replaceAll("[^A-Za-z0-9 ._-]", "_").trim();
+        if (name.isEmpty()) name = "container";
+        return name + "." + EXTENSION;
+    }
+
+    /**
+     * Summarizes the runtime components a container references, as {@code {type, version}} entries.
+     * Informational + a hint for the import plan; {@link ContainerImporter} re-derives from the
+     * container fields (the source of truth) and may enrich entries with a {@code remoteUrl}.
+     */
+    private static JSONArray buildComponents(JSONObject data) throws JSONException {
+        JSONArray out = new JSONArray();
+        addComponent(out, "Proton", data.optString("wineVersion", ""));
+        addComponent(out, "Box64", data.optString("box64Version", ""));
+        addComponent(out, "FEXCore", data.optString("fexcoreVersion", ""));
+
+        String dxConfig = data.optString("dxwrapperConfig", "");
+        addComponent(out, "DXVK", readConfigValue(dxConfig, "version", ','));
+        addComponent(out, "VKD3D", readConfigValue(dxConfig, "vkd3dVersion", ','));
+
+        String gfxConfig = data.optString("graphicsDriverConfig", "");
+        addComponent(out, "GraphicsDriver", readConfigValue(gfxConfig, "version", ';'));
+        return out;
+    }
+
+    private static void addComponent(JSONArray out, String type, String version) throws JSONException {
+        if (version == null || version.isEmpty() || "None".equalsIgnoreCase(version)) return;
+        JSONObject c = new JSONObject();
+        c.put("type", type);
+        c.put("version", version);
+        out.put(c);
+    }
+
+    /** Reads {@code key=value} from a delimiter-separated config string (matches KeyValueSet). */
+    static String readConfigValue(String config, String key, char delimiter) {
+        if (config == null || config.isEmpty()) return "";
+        for (String token : config.split(java.util.regex.Pattern.quote(String.valueOf(delimiter)))) {
+            int eq = token.indexOf('=');
+            if (eq > 0 && token.substring(0, eq).trim().equals(key)) return token.substring(eq + 1).trim();
+        }
+        return "";
+    }
+}

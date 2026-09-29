@@ -1,10 +1,12 @@
 package com.winlator.cmod.ui.settings
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog as AppCompatAlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.BorderStroke
@@ -30,7 +32,9 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -69,8 +73,12 @@ import androidx.compose.ui.unit.dp
 import com.winlator.cmod.XrActivity
 import com.winlator.cmod.XServerDisplayActivity
 import com.winlator.cmod.container.Container
+import com.winlator.cmod.container.ContainerImporter
 import com.winlator.cmod.container.ContainerManager
+import com.winlator.cmod.container.ContainerProfile
+import com.winlator.cmod.contents.ContentsManager
 import com.winlator.cmod.core.FileUtils
+import com.winlator.cmod.core.PreloaderDialog
 import com.winlator.cmod.core.StringUtils
 import com.winlator.cmod.ui.applyAppFullscreen
 import com.winlator.cmod.ui.container.ContainerCreateComposeFragment
@@ -86,6 +94,16 @@ class ContainersSettingsActivity : AppCompatActivity() {
     private val containersState = mutableStateOf<List<Container>>(emptyList())
     private val propertiesState = mutableStateOf<Container?>(null)
     private var showingEditor = false
+
+    private var pendingExportId = -1
+    private val exportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            uri?.let { writeExport(it) }
+        }
+    private val importLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { startImport(it) }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -128,7 +146,9 @@ class ContainersSettingsActivity : AppCompatActivity() {
                         onDismissProperties = { propertiesState.value = null },
                         onRun = ::runContainer,
                         onDuplicate = ::duplicateContainer,
-                        onRemove = ::removeContainer
+                        onRemove = ::removeContainer,
+                        onExport = ::exportContainer,
+                        onImport = ::importContainer
                     )
                 }
             }
@@ -181,6 +201,80 @@ class ContainersSettingsActivity : AppCompatActivity() {
         }
     }
 
+    // ---- Import / export ---------------------------------------------------
+
+    private fun appVersionName(): String =
+        try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
+
+    private fun exportContainer(id: Int) {
+        val container = ContainerManager(this).getContainerById(id) ?: return
+        pendingExportId = id
+        exportLauncher.launch(ContainerProfile.suggestedFileName(container))
+    }
+
+    private fun writeExport(uri: Uri) {
+        val container = ContainerManager(this).getContainerById(pendingExportId) ?: return
+        try {
+            val json = ContainerProfile.export(container, appVersionName())
+            contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                ?: throw IllegalStateException("Cannot open destination")
+            Toast.makeText(this, "Exported ${container.name}", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun importContainer() {
+        importLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+    }
+
+    private fun startImport(uri: Uri) {
+        val json = try {
+            contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+        } catch (e: Exception) { null }
+        if (json.isNullOrEmpty()) {
+            Toast.makeText(this, "Couldn't read the profile file", Toast.LENGTH_LONG).show()
+            return
+        }
+        val envelope = try {
+            ContainerProfile.parse(json)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Invalid container profile: ${e.message}", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val preloader = PreloaderDialog(this)
+        preloader.showOnUiThread(com.winlator.cmod.R.string.loading)
+        Thread {
+            val manager = ContainerManager(this)
+            val contents = ContentsManager(this)
+            contents.syncContents()
+            val result = ContainerImporter.run(this, manager, contents, envelope) { /* progress: kept in the spinner */ }
+            runOnUiThread {
+                preloader.closeOnUiThread()
+                refresh()
+                showImportSummary(result)
+            }
+        }.start()
+    }
+
+    private fun showImportSummary(result: ContainerImporter.Result) {
+        val ok = result.container != null
+        val title = if (ok) "Import complete" else "Import failed"
+        val body = StringBuilder()
+        if (ok) body.append("Created \"").append(result.container!!.name).append("\".")
+        if (result.warnings.isNotEmpty()) {
+            if (body.isNotEmpty()) body.append("\n\n")
+            body.append(result.warnings.joinToString("\n• ", prefix = "• "))
+        }
+        if (body.isEmpty()) body.append(if (ok) "Container created." else "Could not create the container.")
+        AppCompatAlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(body.toString())
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
     override fun onBackPressed() {
         if (supportFragmentManager.backStackEntryCount > 0) {
             supportFragmentManager.popBackStack()
@@ -201,14 +295,19 @@ private fun ContainersSettingsScreen(
     onDismissProperties: () -> Unit,
     onRun: (Int) -> Unit,
     onDuplicate: (Int) -> Unit,
-    onRemove: (Int) -> Unit
+    onRemove: (Int) -> Unit,
+    onExport: (Int) -> Unit,
+    onImport: () -> Unit
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { Text("Containers") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, null) } }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, null) } },
+                actions = {
+                    IconButton(onClick = onImport) { Icon(Icons.Outlined.Download, "Import container") }
+                }
             )
         },
         floatingActionButton = {
@@ -237,7 +336,7 @@ private fun ContainersSettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(containers, key = { it.id }) { container ->
-                    SettingsContainerCard(container, onEdit, onProperties, onRun, onDuplicate, onRemove)
+                    SettingsContainerCard(container, onEdit, onProperties, onRun, onDuplicate, onRemove, onExport)
                 }
             }
         }
@@ -255,7 +354,8 @@ private fun SettingsContainerCard(
     onProperties: (Int) -> Unit,
     onRun: (Int) -> Unit,
     onDuplicate: (Int) -> Unit,
-    onRemove: (Int) -> Unit
+    onRemove: (Int) -> Unit,
+    onExport: (Int) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -292,7 +392,8 @@ private fun SettingsContainerCard(
                 ContainerMoreButton(
                     modifier = Modifier.weight(1f),
                     onDuplicate = { onDuplicate(container.id) },
-                    onRemove = { onRemove(container.id) }
+                    onRemove = { onRemove(container.id) },
+                    onExport = { onExport(container.id) }
                 )
             }
         }
@@ -323,7 +424,8 @@ private fun ActionButton(icon: ImageVector, label: String, modifier: Modifier = 
 private fun ContainerMoreButton(
     modifier: Modifier = Modifier,
     onDuplicate: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onExport: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier) {
@@ -335,6 +437,14 @@ private fun ContainerMoreButton(
                 onClick = {
                     expanded = false
                     onDuplicate()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Export settings") },
+                leadingIcon = { Icon(Icons.Outlined.FileUpload, null) },
+                onClick = {
+                    expanded = false
+                    onExport()
                 }
             )
             DropdownMenuItem(

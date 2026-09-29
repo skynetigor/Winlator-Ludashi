@@ -71,6 +71,11 @@ public abstract class ProtonPackageManager {
             new PackageInfo("proton-11.0-1-arm64ec", "Proton 11.0-1 arm64ec", "proton-wine-11.0-1-arm64ec.wcp.xz",
                     new long[]{127896076L}, RELEASE_D_BASE_URL + "proton-wine-11.0-1-arm64ec.wcp.xz",
                     "a360f849f0ce3a808dacec854f25a641735a62ecc0eca8e09b7b7f7ff44041ff"),
+            // Hosted on GameNative/proton-wine (a different host), so the URL is absolute.
+            new PackageInfo("proton-11.0-2-x86_64", "Proton 11.0-2 x86_64", "proton-11.0-2-x86_64.wcp",
+                    new long[]{66258769L},
+                    "https://github.com/GameNative/proton-wine/releases/download/proton-11.0-2-20260928/proton-11.0-2-x86_64.wcp",
+                    "8ffc1827ca0ddea98815ac9eb678062cc3c8bb9cdd7b2ab772634969fb72fc40"),
             new PackageInfo("proton-10-arm64ec", "Proton 10 arm64ec (Legacy)", "proton-10-arm64ec.tar.zst",
                     new long[]{52428800L, 52428800L, 52428800L, 52428800L, 7195940L})
     );
