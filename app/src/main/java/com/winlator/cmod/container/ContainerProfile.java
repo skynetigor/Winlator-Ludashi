@@ -31,6 +31,18 @@ public final class ContainerProfile {
     /** Device-specific fields dropped on export; importers fall back to local defaults. */
     private static final String[] EXCLUDED_FIELDS = {"id", "drives", "rendererDriverId"};
 
+    /**
+     * "Already-provisioned" markers written into extraData at launch on the source device. Carried
+     * over, they make a freshly-imported container skip extracting box64/fexcore/graphics runtime
+     * into its (empty) imagefs, so the guest binary is missing and launch fails. Dropping them makes
+     * the new container provision on first boot, like a newly-created one. User preferences in
+     * extraData (graphics*, hud, startup, lsfg*) are kept.
+     */
+    private static final String[] EXCLUDED_EXTRA_MARKERS = {
+            "imgVersion", "box64Version", "fexcoreVersion", "installedOpenGLDriver",
+            "dxwrapper", "graphicsDriver", "audioDriver", "wincomponents", "desktopTheme"
+    };
+
     private ContainerProfile() {}
 
     public static final class Envelope {
@@ -49,6 +61,7 @@ public final class ContainerProfile {
         if (raw == null || raw.isEmpty()) throw new JSONException("Container config is empty");
         JSONObject data = new JSONObject(raw);
         for (String field : EXCLUDED_FIELDS) data.remove(field);
+        stripProvisioningMarkers(data);
 
         JSONArray components = buildComponents(data);
         enrichComponentSources(components, context);
@@ -106,9 +119,17 @@ public final class ContainerProfile {
 
         JSONObject container = envelope.getJSONObject("container");
         for (String field : EXCLUDED_FIELDS) container.remove(field); // defensive
+        stripProvisioningMarkers(container); // defensive: force a clean first-boot provision
         JSONArray components = envelope.optJSONArray("components");
         if (components == null) components = new JSONArray();
         return new Envelope(container, components);
+    }
+
+    /** Removes the launch-time "already provisioned" markers from the container's extraData. */
+    private static void stripProvisioningMarkers(JSONObject data) {
+        JSONObject extra = data.optJSONObject("extraData");
+        if (extra == null) return;
+        for (String key : EXCLUDED_EXTRA_MARKERS) extra.remove(key);
     }
 
     /** Suggested export file name, e.g. {@code My Game.wcfg}. */
