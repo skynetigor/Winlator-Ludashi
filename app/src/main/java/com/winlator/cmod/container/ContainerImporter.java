@@ -101,25 +101,26 @@ public final class ContainerImporter {
         }
         try { data.put("dxwrapperConfig", dxwrapperConfig); } catch (Exception ignored) {}
 
-        // box64Version drives Box64 on x86_64 and WOWBox64 on arm64ec. Resolve the variant this
-        // container actually uses; if it can't be installed or found bundled, fall back to the
-        // bundled default — otherwise the launcher can't extract usr/bin/box64 and the guest fails.
+        // Emulators are launch-critical: the guest command is literally the box64 binary. Only keep
+        // the referenced version if it is genuinely present (already installed or bundled) — do NOT
+        // trust a fresh catalog install, which can register a profile even when the download was bad
+        // and then fail to apply at launch, leaving usr/bin/box64 missing. Otherwise use the bundled
+        // default so the container always has a working emulator.
         boolean isArm64ec = data.optString("wineVersion", "").toLowerCase(java.util.Locale.ENGLISH).contains("arm64ec");
         ContentProfile.ContentType box64Type = isArm64ec
                 ? ContentProfile.ContentType.CONTENT_TYPE_WOWBOX64
                 : ContentProfile.ContentType.CONTENT_TYPE_BOX64;
         String box64Version = data.optString("box64Version", "");
-        if (!box64Version.isEmpty()
-                && !ensureContent(context, contents, box64Type, box64Version, hints, progress, warnings)) {
+        if (!box64Version.isEmpty() && !emulatorPresent(context, contents, box64Type, box64Version)) {
             try { data.put("box64Version", DefaultVersion.BOX64); } catch (Exception ignored) {}
-            warnings.add("Box64 " + box64Version + " unavailable; using bundled " + DefaultVersion.BOX64 + ".");
+            warnings.add("Box64 " + box64Version + " not available here; using bundled " + DefaultVersion.BOX64 + ".");
         }
 
         String fexcoreVersion = data.optString("fexcoreVersion", "");
         if (!fexcoreVersion.isEmpty()
-                && !ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_FEXCORE, fexcoreVersion, hints, progress, warnings)) {
+                && !emulatorPresent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_FEXCORE, fexcoreVersion)) {
             try { data.put("fexcoreVersion", DefaultVersion.FEXCORE); } catch (Exception ignored) {}
-            warnings.add("FEXCore " + fexcoreVersion + " unavailable; using bundled " + DefaultVersion.FEXCORE + ".");
+            warnings.add("FEXCore " + fexcoreVersion + " not available here; using bundled " + DefaultVersion.FEXCORE + ".");
         }
 
         if (data.optString("extraData", "").contains("lsfg") || data.toString().contains("lsfgEnabled"))
@@ -255,6 +256,15 @@ public final class ContainerImporter {
                 + (remoteUrl == null ? " (no download source in the profile)" : "")
                 + "; using System. Install it manually and reselect for best results.");
         Log.w(TAG, "Fell back to System for unavailable graphics driver '" + driverId + "'");
+    }
+
+    /** True only if the emulator version is already installed or bundled — no fresh download trusted. */
+    private static boolean emulatorPresent(Context context, ContentsManager contents,
+                                           ContentProfile.ContentType type, String version) {
+        for (ContentProfile p : contents.getInstalledProfiles(type)) {
+            if (version.equals(p.verName) || version.equals(ContentsManager.getEntryName(p))) return true;
+        }
+        return bundledAssetExists(context, type, version);
     }
 
     private static boolean driverAvailable(AdrenotoolsManager adreno, String driverId) {
