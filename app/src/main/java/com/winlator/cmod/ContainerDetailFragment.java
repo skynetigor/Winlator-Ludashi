@@ -1800,6 +1800,8 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
                 });
                 return;
             }
+            // Remember the source so a container profile can re-fetch this exact component on import.
+            contentsManager.recordProfileSource(profile, profile.remoteUrl);
             installImportedContent(Uri.fromFile(output), Collections.singletonList(profile.type), refreshAction, dialog);
         });
     }

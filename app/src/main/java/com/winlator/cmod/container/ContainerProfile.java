@@ -3,6 +3,8 @@ package com.winlator.cmod.container;
 import android.content.Context;
 
 import com.winlator.cmod.contents.AdrenotoolsManager;
+import com.winlator.cmod.contents.ContentProfile;
+import com.winlator.cmod.contents.ContentsManager;
 import com.winlator.cmod.core.FileUtils;
 
 import org.json.JSONArray;
@@ -49,7 +51,7 @@ public final class ContainerProfile {
         for (String field : EXCLUDED_FIELDS) data.remove(field);
 
         JSONArray components = buildComponents(data);
-        enrichGraphicsDriverSource(components, context);
+        enrichComponentSources(components, context);
 
         JSONObject envelope = new JSONObject();
         envelope.put("format", FORMAT);
@@ -61,16 +63,31 @@ public final class ContainerProfile {
         return envelope.toString(2);
     }
 
-    /** Records the download URL of the graphics driver, if known, so import can re-fetch it. */
-    private static void enrichGraphicsDriverSource(JSONArray components, Context context) {
+    /**
+     * Records the download URL of each component, when known, so import can re-fetch it exactly:
+     * the graphics driver from AdrenotoolsManager, and downloadable content (DXVK, VKD3D, Wine/
+     * Proton, etc.) from ContentsManager's remembered sources.
+     */
+    private static void enrichComponentSources(JSONArray components, Context context) {
         if (context == null) return;
         try {
             AdrenotoolsManager adreno = new AdrenotoolsManager(context);
+            ContentsManager contents = new ContentsManager(context);
             for (int i = 0; i < components.length(); i++) {
                 JSONObject c = components.optJSONObject(i);
-                if (c == null || !"GraphicsDriver".equals(c.optString("type"))) continue;
-                String url = adreno.getDriverSourceUrl(c.optString("version"));
-                if (!url.isEmpty()) c.put("remoteUrl", url);
+                if (c == null) continue;
+                String type = c.optString("type");
+                String version = c.optString("version");
+                if (version.isEmpty()) continue;
+
+                String url = "";
+                if ("GraphicsDriver".equals(type)) {
+                    url = adreno.getDriverSourceUrl(version);
+                } else {
+                    ContentProfile.ContentType ct = ContentProfile.ContentType.getTypeByName(type);
+                    if (ct != null) url = contents.getSourceUrl(ct, version);
+                }
+                if (url != null && !url.isEmpty()) c.put("remoteUrl", url);
             }
         } catch (Exception ignored) {}
     }

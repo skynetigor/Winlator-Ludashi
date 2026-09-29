@@ -400,6 +400,22 @@ public class ContentsManager {
         return profile.type.toString() + '-' + profile.verName + '-' + profile.verCode;
     }
 
+    // Remembers where a downloaded component came from (keyed by type+version, not verCode, so a
+    // container profile can re-fetch the exact component when importing on another device).
+    private static String sourceKey(ContentProfile.ContentType type, String verName) {
+        return "content_source:" + type.toString() + '-' + verName;
+    }
+
+    public void recordProfileSource(ContentProfile profile, String url) {
+        if (profile == null || url == null || url.isEmpty()) return;
+        preferences.edit().putString(sourceKey(profile.type, profile.verName), url).apply();
+    }
+
+    public String getSourceUrl(ContentProfile.ContentType type, String verName) {
+        if (type == null || verName == null || verName.isEmpty()) return "";
+        return preferences.getString(sourceKey(type, verName), "");
+    }
+
     public ContentProfile getProfileByEntryName(String entryName) {
         if (entryName == null || entryName.isEmpty() || profilesMap == null) return null;
         int firstDashIndex = entryName.indexOf('-');

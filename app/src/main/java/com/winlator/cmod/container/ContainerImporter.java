@@ -339,7 +339,10 @@ public final class ContainerImporter {
             final CountDownLatch latch = new CountDownLatch(1);
             final AtomicBoolean ok = new AtomicBoolean(false);
             contents.extraContentFile(Uri.fromFile(tmp), new ContentsManager.OnInstallFinishedCallback() {
-                @Override public void onSucceed(ContentProfile profile) { ok.set(true); latch.countDown(); }
+                @Override public void onSucceed(ContentProfile profile) {
+                    contents.recordProfileSource(profile, remoteUrl); // keep it re-exportable
+                    ok.set(true); latch.countDown();
+                }
                 @Override public void onFailed(ContentsManager.InstallFailedReason reason, Exception e) { latch.countDown(); }
             });
             latch.await(INSTALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
