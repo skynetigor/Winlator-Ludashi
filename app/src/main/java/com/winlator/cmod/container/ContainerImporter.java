@@ -101,13 +101,24 @@ public final class ContainerImporter {
         }
         try { data.put("dxwrapperConfig", dxwrapperConfig); } catch (Exception ignored) {}
 
-        // Box64/WOWBox64/FEXCore ship bundled, so these resolve without a download.
-        ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_BOX64,
-                data.optString("box64Version", ""), hints, progress, warnings);
-        ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_WOWBOX64,
-                data.optString("box64Version", ""), hints, progress, warnings);
-        ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_FEXCORE,
-                data.optString("fexcoreVersion", ""), hints, progress, warnings);
+        // box64Version drives Box64 (x86_64) and WOWBox64 (arm64ec). If the referenced version
+        // can't be installed or found bundled, fall back to the bundled default — otherwise the
+        // launcher can't extract usr/bin/box64 and the guest fails to start.
+        String box64Version = data.optString("box64Version", "");
+        boolean box64Resolved =
+                ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_BOX64, box64Version, hints, progress, warnings)
+              | ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_WOWBOX64, box64Version, hints, progress, warnings);
+        if (!box64Version.isEmpty() && !box64Resolved) {
+            try { data.put("box64Version", DefaultVersion.BOX64); } catch (Exception ignored) {}
+            warnings.add("Box64 " + box64Version + " unavailable; using bundled " + DefaultVersion.BOX64 + ".");
+        }
+
+        String fexcoreVersion = data.optString("fexcoreVersion", "");
+        if (!fexcoreVersion.isEmpty()
+                && !ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_FEXCORE, fexcoreVersion, hints, progress, warnings)) {
+            try { data.put("fexcoreVersion", DefaultVersion.FEXCORE); } catch (Exception ignored) {}
+            warnings.add("FEXCore " + fexcoreVersion + " unavailable; using bundled " + DefaultVersion.FEXCORE + ".");
+        }
 
         if (data.optString("extraData", "").contains("lsfg") || data.toString().contains("lsfgEnabled"))
             warnings.add("Frame generation settings were imported; re-import your Lossless.dll to enable it.");
