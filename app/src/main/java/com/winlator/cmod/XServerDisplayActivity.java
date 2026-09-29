@@ -2523,7 +2523,10 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         String vulkanVersion = graphicsDriverConfig.get("vulkanVersion");
-        String vulkanVersionPatch = GPUInformation.getVulkanVersion(adrenoToolsDriverId, this).split("\\.")[2];
+        // Guard the patch lookup: an unavailable driver id makes getVulkanVersion() return a
+        // non-x.y.z string, and a bare [2] would crash the whole activity.
+        String[] vulkanVersionParts = GPUInformation.getVulkanVersion(adrenoToolsDriverId, this).split("\\.");
+        String vulkanVersionPatch = vulkanVersionParts.length > 2 ? vulkanVersionParts[2] : "0";
         vulkanVersion = vulkanVersion + "." + vulkanVersionPatch;
         envVars.put("WRAPPER_VK_VERSION", vulkanVersion);
 

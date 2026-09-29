@@ -2,12 +2,15 @@ package com.winlator.cmod.container;
 
 import android.content.Context;
 import android.net.Uri;
+import android.util.Log;
 
 import androidx.preference.PreferenceManager;
 
+import com.winlator.cmod.contents.AdrenotoolsManager;
 import com.winlator.cmod.contents.ContentProfile;
 import com.winlator.cmod.contents.ContentsManager;
 import com.winlator.cmod.contents.Downloader;
+import com.winlator.cmod.core.DefaultVersion;
 import com.winlator.cmod.core.ProtonPackageManager;
 import com.winlator.cmod.core.WineInfo;
 
@@ -44,6 +47,7 @@ public final class ContainerImporter {
     }
 
     private static final long INSTALL_TIMEOUT_SECONDS = 180;
+    private static final String TAG = "ContainerImporter";
 
     private ContainerImporter() {}
 
@@ -76,15 +80,27 @@ public final class ContainerImporter {
             try { data.put("wineVersion", fallback); } catch (Exception ignored) {}
         }
 
-        // Optional runtimes: applied when the container runs, and the run-time path already falls
-        // back to the bundled asset, so these are best-effort.
+        // Graphics driver: an AdrenoTools/Turnip id that isn't on this device makes the launcher's
+        // getVulkanVersion(...).split(".")[2] throw and crash the app. Rewrite it to System if the
+        // referenced driver isn't available here.
+        sanitizeGraphicsDriver(context, data, warnings);
+
+        // Optional runtimes: applied when the container runs; the run-time path falls back to the
+        // bundled asset, so pre-install when we can and otherwise leave a version that resolves.
         String dxwrapperConfig = data.optString("dxwrapperConfig", "");
-        ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_DXVK,
-                ContainerProfile.readConfigValue(dxwrapperConfig, "version", ','),
-                hints, progress, warnings);
-        ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_VKD3D,
-                ContainerProfile.readConfigValue(dxwrapperConfig, "vkd3dVersion", ','),
-                hints, progress, warnings);
+        String dxvk = ContainerProfile.readConfigValue(dxwrapperConfig, "version", ',');
+        if (!ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_DXVK, dxvk, hints, progress, warnings)) {
+            dxwrapperConfig = setConfigValue(dxwrapperConfig, "version", DefaultVersion.DXVK, ',');
+            warnings.add("DXVK " + dxvk + " unavailable; using bundled " + DefaultVersion.DXVK + ".");
+        }
+        String vkd3d = ContainerProfile.readConfigValue(dxwrapperConfig, "vkd3dVersion", ',');
+        if (!ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_VKD3D, vkd3d, hints, progress, warnings)) {
+            dxwrapperConfig = setConfigValue(dxwrapperConfig, "vkd3dVersion", DefaultVersion.VKD3D, ',');
+            warnings.add("VKD3D " + vkd3d + " unavailable; using " + DefaultVersion.VKD3D + ".");
+        }
+        try { data.put("dxwrapperConfig", dxwrapperConfig); } catch (Exception ignored) {}
+
+        // Box64/WOWBox64/FEXCore ship bundled, so these resolve without a download.
         ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_BOX64,
                 data.optString("box64Version", ""), hints, progress, warnings);
         ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_WOWBOX64,
@@ -161,21 +177,68 @@ public final class ContainerImporter {
 
     // ---- Optional content runtimes ----------------------------------------
 
-    private static void ensureContent(Context context, ContentsManager contents,
-                                      ContentProfile.ContentType type, String version,
-                                      JSONArray hints, Progress progress, List<String> warnings) {
-        if (version == null || version.isEmpty() || "None".equalsIgnoreCase(version)) return;
+    /** @return true if the version is present (installed or bundled) or was installed here. */
+    private static boolean ensureContent(Context context, ContentsManager contents,
+                                         ContentProfile.ContentType type, String version,
+                                         JSONArray hints, Progress progress, List<String> warnings) {
+        if (version == null || version.isEmpty() || "None".equalsIgnoreCase(version)) return true;
         for (ContentProfile p : contents.getInstalledProfiles(type)) {
-            if (version.equals(p.verName) || version.equals(ContentsManager.getEntryName(p))) return; // installed
+            if (version.equals(p.verName) || version.equals(ContentsManager.getEntryName(p))) return true; // installed
         }
-        if (bundledAssetExists(context, type, version)) return; // run-time falls back to the bundled copy
+        if (bundledAssetExists(context, type, version)) return true; // run-time falls back to the bundled copy
 
         String remoteUrl = remoteUrlFor(contents, type, version, hints);
         if (remoteUrl != null) {
             report(progress, "Downloading " + type.toString() + " " + version + "…");
-            if (downloadAndInstall(context, contents, remoteUrl)) return;
+            if (downloadAndInstall(context, contents, remoteUrl)) return true;
         }
-        warnings.add(type.toString() + " " + version + " isn't available; the container will use a bundled fallback.");
+        Log.w(TAG, "Unresolved component " + type + " " + version);
+        return false;
+    }
+
+    /** Ensures graphicsDriverConfig's driver id resolves on this device; otherwise falls to System. */
+    private static void sanitizeGraphicsDriver(Context context, JSONObject data, List<String> warnings) {
+        String config = data.optString("graphicsDriverConfig", "");
+        if (config.isEmpty()) return;
+        String driverId = ContainerProfile.readConfigValue(config, "version", ';');
+        if (driverId.isEmpty() || "System".equalsIgnoreCase(driverId)) return;
+
+        boolean available;
+        try {
+            AdrenotoolsManager adreno = new AdrenotoolsManager(context);
+            available = adreno.isFromResources(driverId) || adreno.enumarateInstalledDrivers().contains(driverId);
+        } catch (Exception e) {
+            available = false;
+        }
+        if (!available) {
+            String fixed = setConfigValue(config, "version", "System", ';');
+            try { data.put("graphicsDriverConfig", fixed); } catch (Exception ignored) {}
+            warnings.add("Graphics driver '" + driverId + "' isn't installed here; using System. Install it and reselect for best results.");
+            Log.w(TAG, "Rewrote unavailable graphics driver '" + driverId + "' to System");
+        }
+    }
+
+    /** Replaces (or appends) key=value in a delimiter-separated config string. */
+    private static String setConfigValue(String config, String key, String value, char delimiter) {
+        String d = String.valueOf(delimiter);
+        String[] tokens = config.isEmpty() ? new String[0] : config.split(java.util.regex.Pattern.quote(d), -1);
+        StringBuilder out = new StringBuilder();
+        boolean replaced = false;
+        for (String token : tokens) {
+            if (out.length() > 0) out.append(delimiter);
+            int eq = token.indexOf('=');
+            if (eq > 0 && token.substring(0, eq).trim().equals(key)) {
+                out.append(key).append('=').append(value);
+                replaced = true;
+            } else {
+                out.append(token);
+            }
+        }
+        if (!replaced) {
+            if (out.length() > 0) out.append(delimiter);
+            out.append(key).append('=').append(value);
+        }
+        return out.toString();
     }
 
     // ---- Shared helpers ----------------------------------------------------
