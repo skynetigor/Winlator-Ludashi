@@ -101,14 +101,16 @@ public final class ContainerImporter {
         }
         try { data.put("dxwrapperConfig", dxwrapperConfig); } catch (Exception ignored) {}
 
-        // box64Version drives Box64 (x86_64) and WOWBox64 (arm64ec). If the referenced version
-        // can't be installed or found bundled, fall back to the bundled default — otherwise the
-        // launcher can't extract usr/bin/box64 and the guest fails to start.
+        // box64Version drives Box64 on x86_64 and WOWBox64 on arm64ec. Resolve the variant this
+        // container actually uses; if it can't be installed or found bundled, fall back to the
+        // bundled default — otherwise the launcher can't extract usr/bin/box64 and the guest fails.
+        boolean isArm64ec = data.optString("wineVersion", "").toLowerCase(java.util.Locale.ENGLISH).contains("arm64ec");
+        ContentProfile.ContentType box64Type = isArm64ec
+                ? ContentProfile.ContentType.CONTENT_TYPE_WOWBOX64
+                : ContentProfile.ContentType.CONTENT_TYPE_BOX64;
         String box64Version = data.optString("box64Version", "");
-        boolean box64Resolved =
-                ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_BOX64, box64Version, hints, progress, warnings)
-              | ensureContent(context, contents, ContentProfile.ContentType.CONTENT_TYPE_WOWBOX64, box64Version, hints, progress, warnings);
-        if (!box64Version.isEmpty() && !box64Resolved) {
+        if (!box64Version.isEmpty()
+                && !ensureContent(context, contents, box64Type, box64Version, hints, progress, warnings)) {
             try { data.put("box64Version", DefaultVersion.BOX64); } catch (Exception ignored) {}
             warnings.add("Box64 " + box64Version + " unavailable; using bundled " + DefaultVersion.BOX64 + ".");
         }
