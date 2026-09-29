@@ -1,5 +1,8 @@
 package com.winlator.cmod.container;
 
+import android.content.Context;
+
+import com.winlator.cmod.contents.AdrenotoolsManager;
 import com.winlator.cmod.core.FileUtils;
 
 import org.json.JSONArray;
@@ -39,20 +42,37 @@ public final class ContainerProfile {
     }
 
     /** Builds the {@code .wcfg} JSON text for a container. */
-    public static String export(Container container, String appVersion) throws JSONException {
+    public static String export(Container container, String appVersion, Context context) throws JSONException {
         String raw = FileUtils.readString(container.getConfigFile());
         if (raw == null || raw.isEmpty()) throw new JSONException("Container config is empty");
         JSONObject data = new JSONObject(raw);
         for (String field : EXCLUDED_FIELDS) data.remove(field);
+
+        JSONArray components = buildComponents(data);
+        enrichGraphicsDriverSource(components, context);
 
         JSONObject envelope = new JSONObject();
         envelope.put("format", FORMAT);
         envelope.put("version", VERSION);
         envelope.put("exportedBy", "Winlator skyNET " + (appVersion == null ? "" : appVersion));
         envelope.put("exportedAt", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(new Date()));
-        envelope.put("components", buildComponents(data));
+        envelope.put("components", components);
         envelope.put("container", data);
         return envelope.toString(2);
+    }
+
+    /** Records the download URL of the graphics driver, if known, so import can re-fetch it. */
+    private static void enrichGraphicsDriverSource(JSONArray components, Context context) {
+        if (context == null) return;
+        try {
+            AdrenotoolsManager adreno = new AdrenotoolsManager(context);
+            for (int i = 0; i < components.length(); i++) {
+                JSONObject c = components.optJSONObject(i);
+                if (c == null || !"GraphicsDriver".equals(c.optString("type"))) continue;
+                String url = adreno.getDriverSourceUrl(c.optString("version"));
+                if (!url.isEmpty()) c.put("remoteUrl", url);
+            }
+        } catch (Exception ignored) {}
     }
 
     /** Parses and validates a {@code .wcfg} profile. Throws {@link JSONException} if malformed. */

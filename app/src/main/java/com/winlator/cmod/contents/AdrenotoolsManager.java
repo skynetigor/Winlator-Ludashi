@@ -86,6 +86,21 @@ public class AdrenotoolsManager {
         return driverVersion;
     }
 
+    /** Remembers where a driver was downloaded from, so a container profile can re-fetch it. */
+    public void setDriverSourceUrl(String adrenoToolsDriverId, String url) {
+        if (adrenoToolsDriverId == null || adrenoToolsDriverId.isEmpty() || url == null || url.isEmpty()) return;
+        FileUtils.writeString(new File(new File(adrenotoolsContentDir, adrenoToolsDriverId), ".source"), url);
+    }
+
+    /** The download URL a driver was installed from, or "" if unknown (sideloaded / pre-existing). */
+    public String getDriverSourceUrl(String adrenoToolsDriverId) {
+        if (adrenoToolsDriverId == null || adrenoToolsDriverId.isEmpty()) return "";
+        File source = new File(new File(adrenotoolsContentDir, adrenoToolsDriverId), ".source");
+        if (!source.isFile()) return "";
+        String url = FileUtils.readString(source);
+        return url == null ? "" : url.trim();
+    }
+
     public String getDriverPath(String adrenotoolsDriverId) {
         return adrenotoolsContentDir.getAbsolutePath() + "/" + adrenotoolsDriverId + "/";
     }

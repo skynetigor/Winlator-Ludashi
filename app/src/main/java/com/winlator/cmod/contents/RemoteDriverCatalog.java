@@ -95,7 +95,10 @@ public final class RemoteDriverCatalog {
                 int read;
                 while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
             }
-            return new AdrenotoolsManager(context).installDriver(Uri.fromFile(archive));
+            AdrenotoolsManager manager = new AdrenotoolsManager(context);
+            String installedId = manager.installDriver(Uri.fromFile(archive));
+            if (installedId != null && !installedId.isEmpty()) manager.setDriverSourceUrl(installedId, url);
+            return installedId;
         } catch (Exception ignored) {
             return "";
         } finally {

@@ -10,6 +10,7 @@ import com.winlator.cmod.contents.AdrenotoolsManager;
 import com.winlator.cmod.contents.ContentProfile;
 import com.winlator.cmod.contents.ContentsManager;
 import com.winlator.cmod.contents.Downloader;
+import com.winlator.cmod.contents.RemoteDriverCatalog;
 import com.winlator.cmod.core.DefaultVersion;
 import com.winlator.cmod.core.ProtonPackageManager;
 import com.winlator.cmod.core.WineInfo;
@@ -83,7 +84,7 @@ public final class ContainerImporter {
         // Graphics driver: an AdrenoTools/Turnip id that isn't on this device makes the launcher's
         // getVulkanVersion(...).split(".")[2] throw and crash the app. Rewrite it to System if the
         // referenced driver isn't available here.
-        sanitizeGraphicsDriver(context, data, warnings);
+        sanitizeGraphicsDriver(context, data, hints, progress, warnings);
 
         // Optional runtimes: applied when the container runs; the run-time path falls back to the
         // bundled asset, so pre-install when we can and otherwise leave a version that resolves.
@@ -196,26 +197,91 @@ public final class ContainerImporter {
         return false;
     }
 
-    /** Ensures graphicsDriverConfig's driver id resolves on this device; otherwise falls to System. */
-    private static void sanitizeGraphicsDriver(Context context, JSONObject data, List<String> warnings) {
+    /**
+     * Makes the container's AdrenoTools graphics driver resolve on this device: if it isn't present,
+     * download it from the URL recorded in the profile; if that isn't possible, fall back to System.
+     */
+    private static void sanitizeGraphicsDriver(Context context, JSONObject data, JSONArray hints,
+                                               Progress progress, List<String> warnings) {
         String config = data.optString("graphicsDriverConfig", "");
         if (config.isEmpty()) return;
         String driverId = ContainerProfile.readConfigValue(config, "version", ';');
         if (driverId.isEmpty() || "System".equalsIgnoreCase(driverId)) return;
 
-        boolean available;
+        AdrenotoolsManager adreno = new AdrenotoolsManager(context);
+        if (driverAvailable(adreno, driverId)) return;
+
+        // Prefer the exact URL the profile recorded; otherwise best-effort match a configured
+        // driver repo by name.
+        String remoteUrl = graphicsDriverRemoteUrl(hints, driverId);
+        boolean byName = false;
+        if (remoteUrl == null) {
+            remoteUrl = catalogUrlByName(context, driverId);
+            byName = remoteUrl != null;
+        }
+        if (remoteUrl != null) {
+            report(progress, "Downloading graphics driver…");
+            try {
+                String installedId = RemoteDriverCatalog.install(context, remoteUrl);
+                if (installedId != null && !installedId.isEmpty()) {
+                    if (!installedId.equals(driverId)) {
+                        data.put("graphicsDriverConfig", setConfigValue(config, "version", installedId, ';'));
+                        Log.i(TAG, "Installed graphics driver as '" + installedId + "' (profile referenced '" + driverId + "')");
+                    }
+                    if (byName) warnings.add("Graphics driver '" + driverId + "' was matched by name from a driver repo; verify it's the one you wanted.");
+                    return;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Graphics driver download failed", e);
+            }
+        }
+
+        // Couldn't obtain it — leave a working driver rather than a crash-inducing ghost.
+        try { data.put("graphicsDriverConfig", setConfigValue(config, "version", "System", ';')); } catch (Exception ignored) {}
+        warnings.add("Graphics driver '" + driverId + "' couldn't be installed"
+                + (remoteUrl == null ? " (no download source in the profile)" : "")
+                + "; using System. Install it manually and reselect for best results.");
+        Log.w(TAG, "Fell back to System for unavailable graphics driver '" + driverId + "'");
+    }
+
+    private static boolean driverAvailable(AdrenotoolsManager adreno, String driverId) {
         try {
-            AdrenotoolsManager adreno = new AdrenotoolsManager(context);
-            available = adreno.isFromResources(driverId) || adreno.enumarateInstalledDrivers().contains(driverId);
+            return adreno.isFromResources(driverId) || adreno.enumarateInstalledDrivers().contains(driverId);
         } catch (Exception e) {
-            available = false;
+            return false;
         }
-        if (!available) {
-            String fixed = setConfigValue(config, "version", "System", ';');
-            try { data.put("graphicsDriverConfig", fixed); } catch (Exception ignored) {}
-            warnings.add("Graphics driver '" + driverId + "' isn't installed here; using System. Install it and reselect for best results.");
-            Log.w(TAG, "Rewrote unavailable graphics driver '" + driverId + "' to System");
+    }
+
+    /** Best-effort: find a configured driver repo whose release/asset name matches the driver id. */
+    private static String catalogUrlByName(Context context, String driverId) {
+        String target = normalize(driverId);
+        if (target.isEmpty()) return null;
+        try {
+            for (RemoteDriverCatalog.Entry entry : RemoteDriverCatalog.load(context)) {
+                String name = normalize(entry.name);
+                if (name.isEmpty()) continue;
+                if (name.equals(target) || name.contains(target) || target.contains(name)) return entry.url;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Driver catalog lookup failed", e);
         }
+        return null;
+    }
+
+    private static String normalize(String s) {
+        return s == null ? "" : s.toLowerCase(java.util.Locale.ENGLISH).replaceAll("[^a-z0-9]", "");
+    }
+
+    private static String graphicsDriverRemoteUrl(JSONArray hints, String driverId) {
+        if (hints == null) return null;
+        for (int i = 0; i < hints.length(); i++) {
+            JSONObject c = hints.optJSONObject(i);
+            if (c == null || !"GraphicsDriver".equals(c.optString("type"))) continue;
+            if (!driverId.equals(c.optString("version"))) continue;
+            String url = c.optString("remoteUrl", "");
+            return url.isEmpty() ? null : url;
+        }
+        return null;
     }
 
     /** Replaces (or appends) key=value in a delimiter-separated config string. */

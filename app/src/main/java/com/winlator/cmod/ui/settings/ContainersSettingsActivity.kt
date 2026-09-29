@@ -215,7 +215,7 @@ class ContainersSettingsActivity : AppCompatActivity() {
     private fun writeExport(uri: Uri) {
         val container = ContainerManager(this).getContainerById(pendingExportId) ?: return
         try {
-            val json = ContainerProfile.export(container, appVersionName())
+            val json = ContainerProfile.export(container, appVersionName(), this)
             contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
                 ?: throw IllegalStateException("Cannot open destination")
             Toast.makeText(this, "Exported ${container.name}", Toast.LENGTH_SHORT).show()
