@@ -29,7 +29,7 @@ public final class ContainerProfile {
     public static final String EXTENSION = "wcfg";
 
     /** Device-specific fields dropped on export; importers fall back to local defaults. */
-    private static final String[] EXCLUDED_FIELDS = {"id", "drives", "rendererDriverId"};
+    private static final String[] EXCLUDED_FIELDS = {"id", "drives"};
 
     /**
      * "Already-provisioned" markers written into extraData at launch on the source device. Carried
@@ -94,7 +94,7 @@ public final class ContainerProfile {
                 if (version.isEmpty()) continue;
 
                 String url = "";
-                if ("GraphicsDriver".equals(type)) {
+                if ("GraphicsDriver".equals(type) || "RendererDriver".equals(type)) {
                     url = adreno.getDriverSourceUrl(version);
                 } else {
                     ContentProfile.ContentType ct = ContentProfile.ContentType.getTypeByName(type);
@@ -158,6 +158,9 @@ public final class ContainerProfile {
 
         String gfxConfig = data.optString("graphicsDriverConfig", "");
         addComponent(out, "GraphicsDriver", readConfigValue(gfxConfig, "version", ';'));
+
+        String rendererDriverId = data.optString("rendererDriverId", "");
+        if (!rendererDriverId.equalsIgnoreCase("system")) addComponent(out, "RendererDriver", rendererDriverId);
         return out;
     }
 

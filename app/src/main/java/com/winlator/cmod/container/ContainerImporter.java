@@ -86,6 +86,11 @@ public final class ContainerImporter {
         // referenced driver isn't available here.
         sanitizeGraphicsDriver(context, data, hints, progress, warnings);
 
+        // Host renderer's driver (rendererDriverId): a second AdrenoTools driver used to report the
+        // Vulkan version to the guest. A ghost id here throws the same split(".")[2] at launch, so
+        // install it if we can, otherwise rewrite it to the "system" sentinel.
+        sanitizeRendererDriver(context, data, hints, progress, warnings);
+
         // Optional runtimes: applied when the container runs; the run-time path falls back to the
         // bundled asset, so pre-install when we can and otherwise leave a version that resolves.
         String dxwrapperConfig = data.optString("dxwrapperConfig", "");
@@ -227,7 +232,7 @@ public final class ContainerImporter {
 
         // Prefer the exact URL the profile recorded; otherwise best-effort match a configured
         // driver repo by name.
-        String remoteUrl = graphicsDriverRemoteUrl(hints, driverId);
+        String remoteUrl = driverRemoteUrl(hints, "GraphicsDriver", driverId);
         boolean byName = false;
         if (remoteUrl == null) {
             remoteUrl = catalogUrlByName(context, driverId);
@@ -256,6 +261,50 @@ public final class ContainerImporter {
                 + (remoteUrl == null ? " (no download source in the profile)" : "")
                 + "; using System. Install it manually and reselect for best results.");
         Log.w(TAG, "Fell back to System for unavailable graphics driver '" + driverId + "'");
+    }
+
+    /**
+     * Makes the container's host renderer driver (top-level {@code rendererDriverId}) resolve on this
+     * device. Same shape as {@link #sanitizeGraphicsDriver}, but the value is a bare AdrenoTools id
+     * with the sentinel {@code "system"} meaning "use the OS driver". If the referenced driver isn't
+     * here, download it; failing that, fall back to {@code "system"}.
+     */
+    private static void sanitizeRendererDriver(Context context, JSONObject data, JSONArray hints,
+                                               Progress progress, List<String> warnings) {
+        String driverId = data.optString("rendererDriverId", "");
+        if (driverId.isEmpty() || "system".equalsIgnoreCase(driverId)) return;
+
+        AdrenotoolsManager adreno = new AdrenotoolsManager(context);
+        if (driverAvailable(adreno, driverId)) return;
+
+        String remoteUrl = driverRemoteUrl(hints, "RendererDriver", driverId);
+        boolean byName = false;
+        if (remoteUrl == null) {
+            remoteUrl = catalogUrlByName(context, driverId);
+            byName = remoteUrl != null;
+        }
+        if (remoteUrl != null) {
+            report(progress, "Downloading renderer driver…");
+            try {
+                String installedId = RemoteDriverCatalog.install(context, remoteUrl);
+                if (installedId != null && !installedId.isEmpty()) {
+                    if (!installedId.equals(driverId)) {
+                        data.put("rendererDriverId", installedId);
+                        Log.i(TAG, "Installed renderer driver as '" + installedId + "' (profile referenced '" + driverId + "')");
+                    }
+                    if (byName) warnings.add("Renderer driver '" + driverId + "' was matched by name from a driver repo; verify it's the one you wanted.");
+                    return;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Renderer driver download failed", e);
+            }
+        }
+
+        try { data.put("rendererDriverId", "system"); } catch (Exception ignored) {}
+        warnings.add("Renderer driver '" + driverId + "' couldn't be installed"
+                + (remoteUrl == null ? " (no download source in the profile)" : "")
+                + "; using the system driver. Install it manually and reselect for best results.");
+        Log.w(TAG, "Fell back to 'system' for unavailable renderer driver '" + driverId + "'");
     }
 
     /** True only if the emulator version is already installed or bundled — no fresh download trusted. */
@@ -295,11 +344,11 @@ public final class ContainerImporter {
         return s == null ? "" : s.toLowerCase(java.util.Locale.ENGLISH).replaceAll("[^a-z0-9]", "");
     }
 
-    private static String graphicsDriverRemoteUrl(JSONArray hints, String driverId) {
+    private static String driverRemoteUrl(JSONArray hints, String hintType, String driverId) {
         if (hints == null) return null;
         for (int i = 0; i < hints.length(); i++) {
             JSONObject c = hints.optJSONObject(i);
-            if (c == null || !"GraphicsDriver".equals(c.optString("type"))) continue;
+            if (c == null || !hintType.equals(c.optString("type"))) continue;
             if (!driverId.equals(c.optString("version"))) continue;
             String url = c.optString("remoteUrl", "");
             return url.isEmpty() ? null : url;
