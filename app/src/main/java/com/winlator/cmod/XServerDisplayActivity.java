@@ -1895,6 +1895,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
         View    btSaveGraphicsPreset = findViewById(R.id.BTSaveGraphicsPreset);
         View    llFrameGenOptions  = findViewById(R.id.LLFrameGenOptions);
         Spinner spFrameGenFPS      = findViewById(R.id.SPFrameGenFPS);
+        SeekBar sbFrameGenFlow     = findViewById(R.id.SBFrameGenFlow);
+        View    tvFrameGenHint     = findViewById(R.id.TVFrameGenHint);
+        View    lblFrameGenFlow    = findViewById(R.id.LBLFrameGenFlow);
 
         if (llFrameGenOptions != null) llFrameGenOptions.setVisibility(View.GONE);
         if (spFrameGenFPS  != null) spFrameGenFPS.setVisibility(View.GONE);
@@ -1926,7 +1929,6 @@ public class XServerDisplayActivity extends AppCompatActivity {
             spNativeFPS.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                     if (llStandardOptions != null) llStandardOptions.setVisibility(isVulkanRenderer ? View.VISIBLE : View.GONE);
-                    if (llFrameGenOptions != null) llFrameGenOptions.setVisibility(View.GONE);
                     int fpsLimit = pos < fpsValues.length ? fpsValues[pos] : 0;
                     if (vkRenderer != null) vkRenderer.setFpsLimit(fpsLimit);
                     if (nativeRenderer != null) nativeRenderer.setFpsLimit(fpsLimit);
@@ -2038,13 +2040,53 @@ public class XServerDisplayActivity extends AppCompatActivity {
         if (lblSharpnessHeader != null) lblSharpnessHeader.setVisibility(sharpVis);
         if (sbSharpness        != null) sbSharpness.setVisibility(sharpVis);
 
-        final String[] frameGenLabels = {"2x Interpolation", "Always On"};
-        if (spFrameGenFPS != null) {
-            ArrayAdapter<String> a = createSidebarSpinnerAdapter(frameGenLabels);
-            a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-            spFrameGenFPS.setAdapter(a);
-        }
+        // Frame Generation (LSFG): a Vulkan layer inside the game, adjustable live because the
+        // layer reloads conf.toml on change. Only reachable when armed at launch, since the layer
+        // cannot be injected into an already-running Vulkan instance.
+        final boolean lsfgArmed = container != null && LsfgManager.isArmed(container);
+        if (llFrameGenOptions != null) llFrameGenOptions.setVisibility(View.VISIBLE);
+        if (tvFrameGenHint  != null) tvFrameGenHint.setVisibility(lsfgArmed ? View.GONE : View.VISIBLE);
+        if (spFrameGenFPS   != null) spFrameGenFPS.setVisibility(lsfgArmed ? View.VISIBLE : View.GONE);
+        if (lblFrameGenFlow != null) lblFrameGenFlow.setVisibility(lsfgArmed ? View.VISIBLE : View.GONE);
+        if (sbFrameGenFlow  != null) sbFrameGenFlow.setVisibility(lsfgArmed ? View.VISIBLE : View.GONE);
 
+        if (lsfgArmed && spFrameGenFPS != null) {
+            final Spinner fgSpinner = spFrameGenFPS;
+            final SeekBar fgFlow = sbFrameGenFlow;
+            final int[] fgMultipliers = {LsfgManager.RUNTIME_OFF_MULTIPLIER, 2, 3, 4};
+            final String[] fgLabels = {"Off", "2x", "3x", "4x"};
+
+            ArrayAdapter<String> a = createSidebarSpinnerAdapter(fgLabels);
+            a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            fgSpinner.setAdapter(a);
+
+            int currentMultiplier = LsfgManager.getMultiplier(container);
+            int selected = 1;
+            for (int i = 0; i < fgMultipliers.length; i++) if (fgMultipliers[i] == currentMultiplier) selected = i;
+            fgSpinner.setSelection(selected, false);
+
+            fgSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                    float flow = fgFlow != null ? fgFlow.getValue() : LsfgManager.getFlowScale(container);
+                    LsfgManager.applyRuntimeConfig(container, fgMultipliers[pos], flow);
+                }
+                @Override public void onNothingSelected(AdapterView<?> p) {}
+            });
+
+            if (fgFlow != null) {
+                fgFlow.setMinValue(0.25f);
+                fgFlow.setMaxValue(1.0f);
+                fgFlow.setStep(0.05f);
+                fgFlow.setValue(LsfgManager.getFlowScale(container));
+                fgFlow.setOnValueChangeListener((sb, value, isFinal) -> {
+                    // Apply on release only: each change recreates the layer's swapchain.
+                    if (!isFinal) return;
+                    int pos = fgSpinner.getSelectedItemPosition();
+                    int mul = (pos >= 0 && pos < fgMultipliers.length) ? fgMultipliers[pos] : LsfgManager.getMultiplier(container);
+                    LsfgManager.applyRuntimeConfig(container, mul, value);
+                });
+            }
+        }
     }
 
         private void setupSidebarInputControls() {

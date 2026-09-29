@@ -264,6 +264,11 @@ public final class LsfgManager {
 
     /** The layer rereads conf.toml when its mtime changes, so it must never see a partial write. */
     private static boolean writeConfig(Container container) {
+        return writeConfig(container, getMultiplier(container));
+    }
+
+    /** @param multiplier written verbatim; 1 keeps the layer resident but passes frames through. */
+    private static boolean writeConfig(Container container, int multiplier) {
         StringBuilder toml = new StringBuilder();
         toml.append("version = 1\n\n");
         toml.append("[global]\n");
@@ -271,7 +276,7 @@ public final class LsfgManager {
         toml.append("no_fp16 = false\n\n");
         toml.append("[[game]]\n");
         toml.append("exe = ").append(tomlString(PROCESS_ID)).append('\n');
-        toml.append("multiplier = ").append(getMultiplier(container)).append('\n');
+        toml.append("multiplier = ").append(Math.max(1, Math.min(4, multiplier))).append('\n');
         toml.append("flow_scale = ").append(formatFlowScale(getFlowScale(container))).append('\n');
         toml.append("performance_mode = ").append(isPerformanceMode(container)).append('\n');
         toml.append("hdr_mode = false\n");
@@ -279,6 +284,28 @@ public final class LsfgManager {
         toml.append("experimental_present_mode = ").append(tomlString(getPresentMode(container))).append('\n');
 
         return writeAtomic(new File(container.getRootDir(), CONFIG_FILE), toml.toString());
+    }
+
+    /** In-game "off": layer stays loaded, frames pass through unmodified. */
+    public static final int RUNTIME_OFF_MULTIPLIER = 1;
+
+    private static final ExecutorService runtimeWriter = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "lsfg-runtime");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /**
+     * Rewrites conf.toml for the running container so the layer reloads live. Multiplier and flow
+     * scale changes force a swapchain recreation inside the layer; the file write happens off the
+     * UI thread. Persists 2x-4x as the container's preferred multiplier, but not the transient
+     * {@link #RUNTIME_OFF_MULTIPLIER}, so a relaunch restores the last real multiplier.
+     */
+    public static void applyRuntimeConfig(Container container, int multiplier, float flowScale) {
+        final int m = Math.max(RUNTIME_OFF_MULTIPLIER, Math.min(4, multiplier));
+        setFlowScale(container, flowScale);
+        if (m >= 2) setMultiplier(container, m);
+        runtimeWriter.execute(() -> writeConfig(container, m));
     }
 
     // ---- Vsync clock -------------------------------------------------------
