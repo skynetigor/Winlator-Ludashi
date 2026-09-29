@@ -304,14 +304,34 @@ private fun ContainersSettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Containers") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, null) } },
-                actions = {
-                    IconButton(onClick = onImport) { Icon(Icons.Outlined.Download, "Import container") }
-                }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, null) } }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAdd) { Icon(Icons.Outlined.Add, "New container") }
+            var menuExpanded by remember { mutableStateOf(false) }
+            Box {
+                FloatingActionButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Outlined.Add, "Add container")
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("New container") },
+                        leadingIcon = { Icon(Icons.Outlined.Add, null) },
+                        onClick = {
+                            menuExpanded = false
+                            onAdd()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Import container") },
+                        leadingIcon = { Icon(Icons.Outlined.Download, null) },
+                        onClick = {
+                            menuExpanded = false
+                            onImport()
+                        }
+                    )
+                }
+            }
         }
     ) { padding ->
         if (containers.isEmpty()) {
