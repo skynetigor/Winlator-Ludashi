@@ -26,9 +26,9 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
     <application
-        android:label="Ludashi FG"
-        android:icon="@mipmap/ic_launcher_fg"
-        android:roundIcon="@mipmap/ic_launcher_fg_round"
+        android:label="Winlator skyNET"
+        android:icon="@mipmap/ic_launcher_sky"
+        android:roundIcon="@mipmap/ic_launcher_sky_round"
         android:theme="@style/AppTheme"
         android:appCategory="game"
         android:isGame="true"

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Winlator's 4-pane window glyph linked to a small node graph (skyNET). Kept inside the
+     66dp safe circle of the 108dp adaptive-icon canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M60,55L70,45 M70,45L80,55 M80,55L70,65 M70,65L60,55 M70,45L70,65" android:strokeColor="#FFFFFFFF" android:strokeAlpha="0.9"
+        android:strokeWidth="1.6" android:strokeLineCap="round" />
+    <path android:pathData="M67,45a3,3 0 1,0 6,0a3,3 0 1,0 -6,0Z M77,55a3,3 0 1,0 6,0a3,3 0 1,0 -6,0Z M67,65a3,3 0 1,0 6,0a3,3 0 1,0 -6,0Z M57,55a3,3 0 1,0 6,0a3,3 0 1,0 -6,0Z" android:fillColor="#FFFFFFFF" />
+    <path android:pathData="M37,39H53A7,7 0 0 1 60,46V62A7,7 0 0 1 53,69H37A7,7 0 0 1 30,62V46A7,7 0 0 1 37,39Z" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" />
+    <path android:pathData="M36.7,43.5H41.5A2.2,2.2 0 0 1 43.7,45.7V50.5A2.2,2.2 0 0 1 41.5,52.7H36.7A2.2,2.2 0 0 1 34.5,50.5V45.7A2.2,2.2 0 0 1 36.7,43.5Z M48.5,43.5H53.3A2.2,2.2 0 0 1 55.5,45.7V50.5A2.2,2.2 0 0 1 53.3,52.7H48.5A2.2,2.2 0 0 1 46.3,50.5V45.7A2.2,2.2 0 0 1 48.5,43.5Z M36.7,55.3H41.5A2.2,2.2 0 0 1 43.7,57.5V62.3A2.2,2.2 0 0 1 41.5,64.5H36.7A2.2,2.2 0 0 1 34.5,62.3V57.5A2.2,2.2 0 0 1 36.7,55.3Z M48.5,55.3H53.3A2.2,2.2 0 0 1 55.5,57.5V62.3A2.2,2.2 0 0 1 53.3,64.5H48.5A2.2,2.2 0 0 1 46.3,62.3V57.5A2.2,2.2 0 0 1 48.5,55.3Z" android:fillColor="#FFFFFFFF" />
+</vector>
